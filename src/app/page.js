@@ -432,7 +432,7 @@ export default function Home() {
       <aside className="sidebar">
         <div className="sidebar-brand">
           <svg className="logo-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 0-9h-.08A7 7 0 1 0 5 15.61"/><path d="M15 19H5.5A3.5 3.5 0 1 1 9 16.5H15a3.5 3.5 0 1 1 0 7Z"/></svg>
-          TeleDrive
+          Telegram Drive Storage
         </div>
         
         <div className="btn-new-wrapper" style={{ position: 'relative' }}>
@@ -536,7 +536,7 @@ export default function Home() {
                     </button>
                     
                     <button onClick={() => { setShowAboutModal(true); setShowProfileMenu(false); }} style={{ width: '100%', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-primary)', fontSize: '0.9rem' }} onMouseOver={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.04)'} onMouseOut={(e) => e.currentTarget.style.background = 'none'}>
-                      <Info size={16} color="var(--text-secondary)" /> Tentang TeleDrive
+                      <Info size={16} color="var(--text-secondary)" /> Tentang Telegram Drive Storage
                     </button>
 
                     <div style={{ height: '1px', background: 'var(--border-light)', margin: '0.5rem 0' }}></div>
@@ -744,15 +744,15 @@ export default function Home() {
             <div style={{ marginBottom: '1.5rem' }}>
               <svg className="logo-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--brand-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ margin: '0 auto' }}><path d="M17.5 19a4.5 4.5 0 0 0 0-9h-.08A7 7 0 1 0 5 15.61"/><path d="M15 19H5.5A3.5 3.5 0 1 1 9 16.5H15a3.5 3.5 0 1 1 0 7Z"/></svg>
             </div>
-            <h3 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>TeleDrive</h3>
+            <h3 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>Telegram Drive Storage</h3>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: '2rem' }}>Versi 1.0.0</p>
             
             <p style={{ color: 'var(--text-primary)', fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '2rem' }}>
-              TeleDrive adalah solusi penyimpanan awan modern yang memanfaatkan keandalan dan kapasitas tak terbatas dari Telegram API sebagai backend penyimpanan Anda.
+              Telegram Drive Storage adalah solusi penyimpanan awan modern yang memanfaatkan keandalan dan kapasitas tak terbatas dari Telegram API sebagai backend penyimpanan Anda.
             </p>
 
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              © 2026 TeleDrive. Hak Cipta Dilindungi.
+              © 2026 Telegram Drive Storage. Hak Cipta Dilindungi.
             </div>
             
             <button onClick={() => setShowAboutModal(false)} style={{ marginTop: '1.5rem', padding: '0.5rem 1.5rem', background: 'none', color: 'var(--brand-primary)', border: 'none', fontWeight: 500, cursor: 'pointer' }} onMouseOver={e => e.currentTarget.style.background='rgba(11,87,208,0.04)'} onMouseOut={e => e.currentTarget.style.background='none'}>

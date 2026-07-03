@@ -1,6 +1,6 @@
-# TeleDrive 🚀
+# Telegram Drive Storage 🚀
 
-TeleDrive is a modern, fast, and multi-user Software-as-a-Service (SaaS) cloud storage application that leverages the **Telegram MTProto API** as its underlying storage backend. 
+Telegram Drive Storage is a modern, fast, and multi-user Software-as-a-Service (SaaS) cloud storage application that leverages the **Telegram MTProto API** as its underlying storage backend. 
 
 By turning Telegram into a free, unlimited cloud storage drive, users can securely upload, organize, and download their files without worrying about local server disk space.
 
@@ -17,7 +17,7 @@ By turning Telegram into a free, unlimited cloud storage drive, users can secure
 
 ## 🏗️ Architecture
 
-TeleDrive acts as a middleman between the User's Browser and Telegram's MTProto API.
+Telegram Drive Storage acts as a middleman between the User's Browser and Telegram's MTProto API.
 
 1. **Frontend**: Next.js React Server Components & Client Components.
 2. **Backend**: Next.js Route Handlers (`/api/*`).
@@ -25,7 +25,7 @@ TeleDrive acts as a middleman between the User's Browser and Telegram's MTProto 
 4. **MTProto Client**: GramJS is used to communicate directly with Telegram's core servers.
 
 ### How Data Isolation Works
-When a user logs in, TeleDrive generates a unique `StringSession` and saves it in the database alongside their Telegram `userId` (`ownerId`). When uploading files or creating folders, TeleDrive tags the metadata in SQLite with this `ownerId`. 
+When a user logs in, Telegram Drive Storage generates a unique `StringSession` and saves it in the database alongside their Telegram `userId` (`ownerId`). When uploading files or creating folders, Telegram Drive Storage tags the metadata in SQLite with this `ownerId`. 
 - **Folders** are implemented as private Telegram Channels (automatically archived to keep your chat list clean).
 - **Files** are uploaded as documents to either `Saved Messages` (root directory) or the specific private Channel (if inside a folder).
 
