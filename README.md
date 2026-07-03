@@ -1,36 +1,96 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TeleDrive 🚀
 
-## Getting Started
+TeleDrive is a modern, fast, and multi-user Software-as-a-Service (SaaS) cloud storage application that leverages the **Telegram MTProto API** as its underlying storage backend. 
 
-First, run the development server:
+By turning Telegram into a free, unlimited cloud storage drive, users can securely upload, organize, and download their files without worrying about local server disk space.
+
+---
+
+## ✨ Features
+
+- **Multi-User (SaaS) Architecture**: Any user can log in with their own Telegram phone number. The system completely isolates data; your files are stored on *your* Telegram account, and other users' files are stored on *theirs*.
+- **Unlimited Storage**: Leverages Telegram's generous file storage limits (up to 2GB per file on standard, 4GB on Premium).
+- **Virtual File System**: Create folders, rename files, and organize data just like Google Drive or Dropbox.
+- **Real-Time Upload Progress**: Smooth, chunk-based uploading with real-time UI progress indicators and cancellation support.
+- **End-to-End Privacy**: Files are sent to your own `Saved Messages` (or dedicated private channels). Only you can access them.
+- **Modern UI**: Built with Next.js 14 (App Router) and vanilla CSS, providing a glassmorphism and premium aesthetic.
+
+## 🏗️ Architecture
+
+TeleDrive acts as a middleman between the User's Browser and Telegram's MTProto API.
+
+1. **Frontend**: Next.js React Server Components & Client Components.
+2. **Backend**: Next.js Route Handlers (`/api/*`).
+3. **Database**: Local SQLite database (`database.sqlite`) to store file and folder metadata, mapping local virtual IDs to Telegram's actual Message/Channel IDs.
+4. **MTProto Client**: GramJS is used to communicate directly with Telegram's core servers.
+
+### How Data Isolation Works
+When a user logs in, TeleDrive generates a unique `StringSession` and saves it in the database alongside their Telegram `userId` (`ownerId`). When uploading files or creating folders, TeleDrive tags the metadata in SQLite with this `ownerId`. 
+- **Folders** are implemented as private Telegram Channels (automatically archived to keep your chat list clean).
+- **Files** are uploaded as documents to either `Saved Messages` (root directory) or the specific private Channel (if inside a folder).
+
+## 🚀 Getting Started
+
+### Prerequisites
+- Node.js 18+ installed
+- A Telegram Account
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/v-vabyo/Telegram-Drive-Storage.git
+cd Telegram-Drive-Storage
+```
+
+### 2. Environment Variables
+
+Create a `.env.local` file in the root of the project and add your Telegram API credentials. You can obtain these from [my.telegram.org](https://my.telegram.org/apps).
+
+```env
+TELEGRAM_API_ID=your_api_id_here
+TELEGRAM_API_HASH=your_api_hash_here
+```
+
+### 3. Install Dependencies
+
+```bash
+npm install
+# or
+yarn install
+# or
+pnpm install
+```
+
+### 4. Run the Development Server
 
 ```bash
 npm run dev
 # or
 yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the application.
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+## 📂 Project Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```text
+src/
+├── app/                  # Next.js App Router UI & API Routes
+│   ├── api/              # Backend Endpoints (Auth, Files, Folders, Upload, Download)
+│   ├── globals.css       # Global design tokens and utilities
+│   ├── layout.js         # Root layout
+│   └── page.js           # Main dashboard and UI components
+├── lib/                  # Core Utilities
+│   ├── db.js             # SQLite initialization and wrapper functions
+│   ├── telegram.js       # GramJS MTProto client pooling and session management
+│   └── uploadStore.js    # In-memory store for upload progress tracking
+```
 
-## Learn More
+## 🔒 Security
 
-To learn more about Next.js, take a look at the following resources:
+- **Session Handling**: Telegram sessions are stored safely in SQLite and are tied to an HTTP-Only cookie (`teledrive_session`) sent to the browser.
+- **No Data Leaks**: API routes rigidly enforce `ownerId` checks for all SQL queries. A user cannot query, delete, rename, or download a file that belongs to a different `ownerId`.
+- **Git Ignore**: `database.sqlite` is explicitly ignored to ensure user sessions are never committed to version control.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 📜 License
+This project is open-source and available under the MIT License. Feel free to fork, modify, and deploy your own instance!
