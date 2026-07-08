@@ -59,16 +59,36 @@ export async function PUT(req, { params }) {
     const userId = await getUserId();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { name } = await req.json();
-    if (!name) return NextResponse.json({ error: 'Missing new name' }, { status: 400 });
+    const body = await req.json();
+    const { action, name } = body;
+    
+    let sql = '';
+    let paramsArr = [];
 
-    const result = await runQuery('UPDATE folders SET name = ? WHERE id = ? AND ownerId = ?', [name, id, userId]);
+    if (action === 'rename' || (!action && name)) {
+      if (!name) return NextResponse.json({ error: 'Missing new name' }, { status: 400 });
+      sql = 'UPDATE folders SET name = ? WHERE id = ? AND ownerId = ?';
+      paramsArr = [name, id, userId];
+    } else if (action === 'trash') {
+      sql = 'UPDATE folders SET isDeleted = 1, deletedAt = CURRENT_TIMESTAMP WHERE id = ? AND ownerId = ?';
+      paramsArr = [id, userId];
+    } else if (action === 'restore') {
+      sql = 'UPDATE folders SET isDeleted = 0, deletedAt = NULL WHERE id = ? AND ownerId = ?';
+      paramsArr = [id, userId];
+    } else if (action === 'star') {
+      sql = 'UPDATE folders SET isStarred = 1 WHERE id = ? AND ownerId = ?';
+      paramsArr = [id, userId];
+    } else if (action === 'unstar') {
+      sql = 'UPDATE folders SET isStarred = 0 WHERE id = ? AND ownerId = ?';
+      paramsArr = [id, userId];
+    } else {
+      return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    }
+
+    const result = await runQuery(sql, paramsArr);
     if (result.changes === 0) {
        return NextResponse.json({ error: 'Folder not found or unauthorized' }, { status: 404 });
     }
-    
-    // We don't rename the channel in Telegram, only the local UI reference is enough.
-    // The channel is archived and hidden anyway.
 
     return NextResponse.json({ success: true, name });
   } catch (error) {

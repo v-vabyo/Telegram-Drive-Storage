@@ -56,8 +56,26 @@ export async function getDb() {
             if (err) {
               reject(err);
             } else {
-              dbInstance = db;
-              resolve(dbInstance);
+              // Run migrations silently (ignore errors if columns already exist)
+              const migrations = [
+                "ALTER TABLE files ADD COLUMN isStarred INTEGER DEFAULT 0",
+                "ALTER TABLE files ADD COLUMN isDeleted INTEGER DEFAULT 0",
+                "ALTER TABLE files ADD COLUMN deletedAt DATETIME",
+                "ALTER TABLE folders ADD COLUMN isStarred INTEGER DEFAULT 0",
+                "ALTER TABLE folders ADD COLUMN isDeleted INTEGER DEFAULT 0",
+                "ALTER TABLE folders ADD COLUMN deletedAt DATETIME"
+              ];
+              
+              let completed = 0;
+              migrations.forEach(sql => {
+                db.run(sql, () => {
+                  completed++;
+                  if (completed === migrations.length) {
+                    dbInstance = db;
+                    resolve(dbInstance);
+                  }
+                });
+              });
             }
           });
         });

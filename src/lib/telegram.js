@@ -6,7 +6,9 @@ import { cookies } from "next/headers";
 const apiId = Number(process.env.TELEGRAM_API_ID);
 const apiHash = process.env.TELEGRAM_API_HASH;
 
-const clientPool = new Map();
+const globalForTelegram = global;
+const clientPool = globalForTelegram.clientPool || new Map();
+if (process.env.NODE_ENV !== 'production') globalForTelegram.clientPool = clientPool;
 
 export async function getClient(allowTemp = false) {
   const cookieStore = cookies();
@@ -41,7 +43,11 @@ export async function getClient(allowTemp = false) {
   }
 
   if (clientPool.has(sessionId)) {
-    return clientPool.get(sessionId);
+    const client = clientPool.get(sessionId);
+    if (!client.connected) {
+      try { await client.connect(); } catch (e) {}
+    }
+    return client;
   }
 
   const sessionRow = await getQuery("SELECT sessionString FROM sessions WHERE id = ?", [sessionId]);

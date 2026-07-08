@@ -29,6 +29,11 @@ export async function DELETE(req, { params }) {
       if (folderMeta && folderMeta.telegramChannelId) {
         targetPeer = folderMeta.telegramChannelId;
       }
+    } else {
+      const setting = await getQuery('SELECT value FROM settings WHERE key = ?', [`rootChannelId_${userId}`]);
+      if (setting && setting.value) {
+        targetPeer = setting.value;
+      }
     }
 
     // Delete message from Telegram
@@ -53,16 +58,37 @@ export async function PUT(req, { params }) {
     const userId = await getUserId();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { name } = await req.json();
-    if (!name) return NextResponse.json({ error: 'Missing new name' }, { status: 400 });
+    const body = await req.json();
+    const { action, name } = body;
+    
+    let sql = '';
+    let paramsArr = [];
 
-    const result = await runQuery('UPDATE files SET filename = ? WHERE id = ? AND ownerId = ?', [name, id, userId]);
+    if (action === 'rename' || (!action && name)) {
+      if (!name) return NextResponse.json({ error: 'Missing new name' }, { status: 400 });
+      sql = 'UPDATE files SET filename = ? WHERE id = ? AND ownerId = ?';
+      paramsArr = [name, id, userId];
+    } else if (action === 'trash') {
+      sql = 'UPDATE files SET isDeleted = 1, deletedAt = CURRENT_TIMESTAMP WHERE id = ? AND ownerId = ?';
+      paramsArr = [id, userId];
+    } else if (action === 'restore') {
+      sql = 'UPDATE files SET isDeleted = 0, deletedAt = NULL WHERE id = ? AND ownerId = ?';
+      paramsArr = [id, userId];
+    } else if (action === 'star') {
+      sql = 'UPDATE files SET isStarred = 1 WHERE id = ? AND ownerId = ?';
+      paramsArr = [id, userId];
+    } else if (action === 'unstar') {
+      sql = 'UPDATE files SET isStarred = 0 WHERE id = ? AND ownerId = ?';
+      paramsArr = [id, userId];
+    } else {
+      return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    }
+
+    const result = await runQuery(sql, paramsArr);
     if (result.changes === 0) {
        return NextResponse.json({ error: 'File not found or unauthorized' }, { status: 404 });
     }
     
-    // We don't need to rename the file in Telegram, only the local DB reference is enough.
-
     return NextResponse.json({ success: true, name });
   } catch (error) {
     console.error('Rename file error:', error);

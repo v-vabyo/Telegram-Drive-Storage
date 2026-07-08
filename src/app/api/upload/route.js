@@ -36,6 +36,47 @@ export async function POST(req) {
       if (folderMeta && folderMeta.telegramChannelId) {
         targetPeer = folderMeta.telegramChannelId;
       }
+    } else {
+      const { getQuery, runQuery } = require('@/lib/db');
+      const { Api } = require('telegram');
+      const settingKey = `rootChannelId_${userId}`;
+      const setting = await getQuery('SELECT value FROM settings WHERE key = ?', [settingKey]);
+      
+      if (setting && setting.value) {
+        targetPeer = setting.value;
+      } else {
+        const result = await client.invoke(
+          new Api.channels.CreateChannel({
+            title: "TelegramStorage Root",
+            about: "Root directory channel created by TelegramStorage",
+            broadcast: true,
+          })
+        );
+        const channel = result.chats[0];
+        const rawChannelId = channel.id.toString();
+        const telegramChannelId = "-100" + rawChannelId;
+        
+        targetPeer = telegramChannelId;
+        await runQuery('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [settingKey, telegramChannelId]);
+        
+        try {
+          await client.invoke(
+            new Api.folders.EditPeerFolders({
+              folderPeers: [
+                new Api.InputFolderPeer({
+                  peer: new Api.InputPeerChannel({
+                    channelId: channel.id,
+                    accessHash: channel.accessHash
+                  }),
+                  folderId: 1, // Archive folder ID
+                }),
+              ],
+            })
+          );
+        } catch (archiveErr) {
+          console.error("Failed to archive root channel:", archiveErr);
+        }
+      }
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -54,11 +95,9 @@ export async function POST(req) {
 
       let telegramFileId;
       try {
-        const customFile = new CustomFile(file.name, file.size, tempFilePath);
-
-        // Upload to target
+        // Upload to target using the file path directly
         const message = await client.sendFile(targetPeer, {
-          file: customFile,
+          file: tempFilePath,
           forceDocument: true,
           progressCallback: (progress) => {
             if (uploadId) {

@@ -29,6 +29,11 @@ export async function GET(req, { params }) {
       if (folderMeta && folderMeta.telegramChannelId) {
         targetPeer = folderMeta.telegramChannelId;
       }
+    } else {
+      const setting = await getQuery('SELECT value FROM settings WHERE key = ?', [`rootChannelId_${userId}`]);
+      if (setting && setting.value) {
+        targetPeer = setting.value;
+      }
     }
 
     const messages = await client.getMessages(targetPeer, { ids: [parseInt(fileMeta.telegramFileId)] });
