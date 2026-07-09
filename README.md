@@ -4,8 +4,6 @@ Telegram Drive Storage is a modern, fast, and multi-user Software-as-a-Service (
 
 By turning Telegram into a free, unlimited cloud storage drive, users can securely upload, organize, and download their files without worrying about local server disk space, all wrapped in a stunning glassmorphism UI.
 
-![Premium Cloud UI](public/logo.png)
-
 ---
 
 ## ✨ Features for End Users
