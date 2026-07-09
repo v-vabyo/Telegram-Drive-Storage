@@ -82,7 +82,7 @@ const dict = {
     action: "Aksi",
     recent: "Terbaru",
     starred: "Berbintang",
-    gallery: "Galeri Foto",
+    gallery: "Galeri Media",
     trash: "Sampah",
     emptyTrash: "Kosongkan Sampah",
     trashSubtitle: "Item di Sampah akan dihapus secara permanen setelah 30 hari."
@@ -164,7 +164,7 @@ const dict = {
     action: "Action",
     recent: "Recent",
     starred: "Starred",
-    gallery: "Photo Gallery",
+    gallery: "Media Gallery",
     trash: "Trash",
     emptyTrash: "Empty Trash",
     trashSubtitle: "Items in Trash will be permanently deleted after 30 days."
@@ -1108,7 +1108,27 @@ export default function Home() {
 
     setShowNewMenu(false);
 
-    const newUploads = selectedFiles.map(file => {
+    const validFiles = [];
+    const oversizedFiles = [];
+    
+    selectedFiles.forEach(file => {
+      if (file.size > 2 * 1024 * 1024 * 1024) {
+        oversizedFiles.push(file.name);
+      } else {
+        validFiles.push(file);
+      }
+    });
+
+    if (oversizedFiles.length > 0) {
+      showDialog('alert', 'Ukuran File Terlalu Besar', `File berikut melebihi batas maksimal 2 GB dan tidak dapat diunggah: ${oversizedFiles.join(', ')}`);
+    }
+
+    if (!validFiles.length) {
+      e.target.value = null;
+      return;
+    }
+
+    const newUploads = validFiles.map(file => {
       const uploadId = Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
       return {
         id: uploadId,
@@ -2001,9 +2021,11 @@ export default function Home() {
                             </div>
                           </div>
                         </div>
-                        <div className="file-icon-wrapper" style={{ padding: isImage ? 0 : undefined, overflow: 'hidden', width: '100%', height: 'auto', aspectRatio: '1 / 1', background: 'var(--bg-base)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div className="file-icon-wrapper" style={{ padding: (isImage || isVideo) ? 0 : undefined, overflow: 'hidden', width: '100%', height: 'auto', aspectRatio: '1 / 1', background: 'var(--bg-base)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           {isImage ? (
                             <img src={`/api/download/${file.id}`} alt={file.filename} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '12px' }} loading="lazy" />
+                          ) : isVideo ? (
+                            <video src={`/api/download/${file.id}#t=0.1`} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '12px' }} preload="metadata" muted playsInline />
                           ) : (
                             IconComponent
                           )}
@@ -2102,7 +2124,7 @@ export default function Home() {
         <div className="modal-overlay" style={{ zIndex: 2000 }} onClick={() => dialogConfig.type === 'alert' && dialogConfig.onConfirm(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()} style={{ padding: '1.5rem', maxWidth: '400px', width: '90%' }}>
             <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.75rem', color: 'var(--text-primary)' }}>{dialogConfig.title}</h3>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', fontSize: '0.95rem', lineHeight: '1.5' }}>{dialogConfig.message}</p>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', fontSize: '0.95rem', lineHeight: '1.5', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{dialogConfig.message}</p>
 
             {dialogConfig.type === 'prompt' && (
               <input
@@ -2141,12 +2163,17 @@ export default function Home() {
             {(() => {
               const ext = previewFile.filename.includes('.') ? previewFile.filename.split('.').pop().toLowerCase() : '';
               const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
+              const isVideo = ['mp4', 'mkv', 'avi', 'mov', 'webm'].includes(ext);
 
-              if (isImage) {
+              if (isImage || isVideo) {
                 return (
                   <>
-                    <img src={`/api/download/${previewFile.id}`} alt={previewFile.filename} style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain', borderRadius: '12px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }} loading="lazy" />
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'var(--bg-card)', padding: '1rem 1.5rem', borderRadius: '100px', boxShadow: 'var(--shadow-lg)' }}>
+                    {isImage ? (
+                      <img src={`/api/download/${previewFile.id}`} alt={previewFile.filename} style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain', borderRadius: '12px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }} loading="lazy" />
+                    ) : (
+                      <video src={`/api/download/${previewFile.id}`} controls autoPlay style={{ maxWidth: '100%', maxHeight: '70vh', borderRadius: '12px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)', outline: 'none' }} />
+                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'var(--bg-card)', padding: '0.5rem 1rem', borderRadius: '100px', boxShadow: 'var(--shadow-lg)', fontSize: '0.9rem' }}>
                       <span style={{ color: 'var(--text-primary)', fontWeight: 500, maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{previewFile.filename}</span>
                       <span style={{ color: 'var(--text-muted)' }}>•</span>
                       <span style={{ color: 'var(--text-secondary)' }}>{formatSize(previewFile.size)}</span>
@@ -2154,29 +2181,29 @@ export default function Home() {
                         <div style={{ marginLeft: '1rem', display: 'flex', gap: '0.5rem' }}>
                           <button
                             onClick={(e) => { setPreviewFile(null); handleAction(e, 'file', previewFile.id, 'restore'); }}
-                            style={{ background: 'var(--brand-bg)', color: 'var(--brand-primary)', padding: '0.5rem 1.25rem', borderRadius: '100px', border: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', transition: 'all 0.2s' }}
+                            style={{ background: 'var(--brand-bg)', color: 'var(--brand-primary)', padding: '0.4rem 1rem', borderRadius: '100px', border: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', transition: 'all 0.2s', fontSize: '0.85rem' }}
                             onMouseOver={e => { e.currentTarget.style.background = 'var(--brand-primary)'; e.currentTarget.style.color = '#fff'; }}
                             onMouseOut={e => { e.currentTarget.style.background = 'var(--brand-bg)'; e.currentTarget.style.color = 'var(--brand-primary)'; }}
                           >
-                            <RotateCcw size={18} /> Pulihkan
+                            <RotateCcw size={16} /> Pulihkan
                           </button>
                           <button
                             onClick={(e) => { setPreviewFile(null); handleDelete(e, 'file', previewFile.id, previewFile.filename); }}
-                            style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '0.5rem 1.25rem', borderRadius: '100px', border: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', transition: 'all 0.2s' }}
+                            style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '0.4rem 1rem', borderRadius: '100px', border: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', transition: 'all 0.2s', fontSize: '0.85rem' }}
                             onMouseOver={e => { e.currentTarget.style.background = '#ef4444'; e.currentTarget.style.color = '#fff'; }}
                             onMouseOut={e => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'; e.currentTarget.style.color = '#ef4444'; }}
                           >
-                            <Trash2 size={18} /> Hapus
+                            <Trash2 size={16} /> Hapus
                           </button>
                         </div>
                       ) : (
                         <a
                           href={`/api/download/${previewFile.id}`}
-                          style={{ marginLeft: '1rem', background: 'var(--brand-bg)', color: 'var(--brand-primary)', padding: '0.5rem 1.25rem', borderRadius: '100px', textDecoration: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', transition: 'all 0.2s' }}
+                          style={{ marginLeft: '0.5rem', background: 'var(--brand-bg)', color: 'var(--brand-primary)', padding: '0.4rem 1rem', borderRadius: '100px', textDecoration: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem', transition: 'all 0.2s', fontSize: '0.85rem' }}
                           onMouseOver={e => { e.currentTarget.style.background = 'var(--brand-primary)'; e.currentTarget.style.color = '#fff'; }}
                           onMouseOut={e => { e.currentTarget.style.background = 'var(--brand-bg)'; e.currentTarget.style.color = 'var(--brand-primary)'; }}
                         >
-                          <Download size={18} /> {t.download}
+                          <Download size={16} /> {t.download}
                         </a>
                       )}
                     </div>

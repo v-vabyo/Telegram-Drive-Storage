@@ -23,7 +23,7 @@ export async function GET(req) {
     } else if (filter === 'recent') {
       sql = 'SELECT id, filename, size, mimeType, isStarred, isDeleted, createdAt FROM files WHERE ownerId = ? AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 50';
     } else if (filter === 'media') {
-      sql = 'SELECT id, filename, size, mimeType, isStarred, isDeleted, createdAt FROM files WHERE ownerId = ? AND isDeleted = 0 AND (mimeType LIKE "image/%" OR mimeType LIKE "video/%") ORDER BY createdAt DESC';
+      sql = `SELECT id, filename, size, mimeType, isStarred, isDeleted, createdAt FROM files WHERE ownerId = ? AND isDeleted = 0 AND (mimeType LIKE 'image/%' OR mimeType LIKE 'video/%' OR filename LIKE '%.jpg' OR filename LIKE '%.jpeg' OR filename LIKE '%.png' OR filename LIKE '%.gif' OR filename LIKE '%.webp' OR filename LIKE '%.mp4' OR filename LIKE '%.mkv' OR filename LIKE '%.avi' OR filename LIKE '%.mov' OR filename LIKE '%.webm') ORDER BY createdAt DESC`;
     } else if (search) {
       sql = 'SELECT id, filename, size, mimeType, isStarred, isDeleted, createdAt FROM files WHERE ownerId = ? AND isDeleted = 0 AND filename LIKE ? ORDER BY createdAt DESC';
       params.push(`%${search}%`);

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getClient, getUserId } from '@/lib/telegram';
 import { getQuery } from '@/lib/db';
+import bigInt from 'big-integer';
 
 export async function GET(req, { params }) {
   try {
@@ -43,20 +44,47 @@ export async function GET(req, { params }) {
 
     const message = messages[0];
 
+    const range = req.headers.get('range');
+    let start = 0;
+    let end = fileMeta.size ? fileMeta.size - 1 : 0;
+    let isPartial = false;
+
+    if (range && fileMeta.size) {
+      const parts = range.replace(/bytes=/, "").split("-");
+      start = parseInt(parts[0], 10);
+      end = parts[1] ? parseInt(parts[1], 10) : fileMeta.size - 1;
+      isPartial = true;
+    }
+
     const headers = new Headers();
-    headers.set('Content-Disposition', `attachment; filename="${fileMeta.filename}"`);
+    const disposition = fileMeta.mimeType && (fileMeta.mimeType.startsWith('video/') || fileMeta.mimeType.startsWith('audio/')) ? 'inline' : 'attachment';
+    headers.set('Content-Disposition', `${disposition}; filename="${fileMeta.filename}"`);
     headers.set('Content-Type', fileMeta.mimeType || 'application/octet-stream');
-    if (fileMeta.size) {
+    headers.set('Accept-Ranges', 'bytes');
+
+    let status = 200;
+    if (isPartial) {
+      status = 206;
+      headers.set('Content-Range', `bytes ${start}-${end}/${fileMeta.size}`);
+      headers.set('Content-Length', (end - start + 1).toString());
+    } else if (fileMeta.size) {
       headers.set('Content-Length', fileMeta.size.toString());
     }
 
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          const iterator = client.iterDownload({
+          const iterOptions = {
             file: message.media,
-            requestSize: 1024 * 512, // 512 KB chunks
-          });
+            requestSize: 1024 * 1024, // 1 MB chunks for faster loading
+          };
+
+          if (isPartial) {
+            iterOptions.offset = bigInt(start);
+            iterOptions.limit = end - start + 1;
+          }
+
+          const iterator = client.iterDownload(iterOptions);
           
           for await (const chunk of iterator) {
             controller.enqueue(new Uint8Array(chunk));
@@ -70,7 +98,7 @@ export async function GET(req, { params }) {
     });
 
     return new NextResponse(stream, {
-      status: 200,
+      status,
       headers
     });
   } catch (error) {

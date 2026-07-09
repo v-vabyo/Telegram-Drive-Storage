@@ -47,3 +47,5 @@ database.sqlite
 # scripts and docs
 check-db.js
 test-forward.mjs
+test-turso.mjs
+generate-options.js
