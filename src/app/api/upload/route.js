@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getClient, getUserId } from '@/lib/telegram';
-import { runQuery } from '@/lib/db';
+import { runQuery, getQuery } from '@/lib/db';
 import crypto from 'crypto';
 import { uploadStore } from '@/lib/uploadStore';
 
@@ -31,13 +31,11 @@ export async function POST(req) {
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     if (folderId) {
-      const { getQuery } = require('@/lib/db');
       const folderMeta = await getQuery('SELECT telegramChannelId FROM folders WHERE id = ? AND ownerId = ?', [folderId, userId]);
       if (folderMeta && folderMeta.telegramChannelId) {
         targetPeer = folderMeta.telegramChannelId;
       }
     } else {
-      const { getQuery, runQuery } = require('@/lib/db');
       const { Api } = require('telegram');
       const settingKey = `rootChannelId_${userId}`;
       const setting = await getQuery('SELECT value FROM settings WHERE key = ?', [settingKey]);

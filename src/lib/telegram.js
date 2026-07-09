@@ -1,4 +1,5 @@
 import { Api, TelegramClient } from "telegram";
+import crypto from "crypto";
 import { StringSession } from "telegram/sessions/index.js";
 import { getQuery, runQuery } from "./db.js";
 import { cookies } from "next/headers";
@@ -32,7 +33,7 @@ export async function getClient(allowTemp = false) {
       throw new Error('No session cookie found');
     }
     // Generate new temporary session for login
-    sessionId = "temp_" + Math.random().toString(36).substring(2, 15);
+    sessionId = "temp_" + crypto.randomBytes(16).toString('hex');
     const client = new TelegramClient(new StringSession(""), apiId, apiHash, {
       connectionRetries: 5,
     });

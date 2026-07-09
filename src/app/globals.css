@@ -171,10 +171,6 @@ body {
 
 .sidebar-brand .logo-icon {
   color: white;
-  background: linear-gradient(135deg, var(--brand-primary), #0ea5e9);
-  padding: 6px;
-  border-radius: 10px;
-  box-shadow: 0 4px 10px rgba(59, 130, 246, 0.3);
 }
 
 .btn-new-wrapper {

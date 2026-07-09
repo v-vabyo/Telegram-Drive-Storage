@@ -1436,7 +1436,7 @@ export default function Home() {
       {/* Sidebar */}
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <svg className="logo-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 0-9h-.08A7 7 0 1 0 5 15.61" /><path d="M15 19H5.5A3.5 3.5 0 1 1 9 16.5H15a3.5 3.5 0 1 1 0 7Z" /></svg>
+          <img src="/logo.png" alt="Logo" className="logo-icon" width="28" height="28" style={{ objectFit: 'contain' }} />
           Telegram Drive Storage
         </div>
 
@@ -2260,7 +2260,7 @@ export default function Home() {
         <div className="modal-overlay" onClick={() => setShowAboutModal(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()} style={{ padding: '2rem', maxWidth: '400px', textAlign: 'center' }}>
             <div style={{ marginBottom: '1.5rem', textAlign: 'center' }}>
-              <svg className="logo-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--brand-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ margin: '0 auto' }}><path d="M17.5 19a4.5 4.5 0 0 0 0-9h-.08A7 7 0 1 0 5 15.61" /><path d="M15 19H5.5A3.5 3.5 0 1 1 9 16.5H15a3.5 3.5 0 1 1 0 7Z" /></svg>
+              <img src="/logo.png" alt="Logo" className="logo-icon" width="48" height="48" style={{ margin: '0 auto', display: 'block', objectFit: 'contain' }} />
             </div>
             <h3 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--text-primary)', textAlign: 'center' }}>Telegram Drive Storage</h3>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: '1.5rem', textAlign: 'center' }}>{t.version}</p>
@@ -2318,18 +2318,37 @@ export default function Home() {
                     <Folder size={20} color="var(--brand-primary)" />
                     <span style={{ fontWeight: 600 }}>Root (Halaman Utama)</span>
                   </div>
-                  {allFoldersList.map(folder => (
-                    <div
-                      key={folder.id}
-                      onClick={() => executeDestinationAction(folder.id)}
-                      style={{ padding: '0.75rem', cursor: 'pointer', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: folder.parentId ? '1.5rem' : '0' }}
-                      onMouseOver={e => e.currentTarget.style.background = 'var(--bg-surface-hover)'}
-                      onMouseOut={e => e.currentTarget.style.background = 'transparent'}
-                    >
-                      <Folder size={18} color="var(--text-secondary)" />
-                      <span>{folder.name}</span>
-                    </div>
-                  ))}
+                  {(() => {
+                    const getDepth = (folderId, depth = 1) => {
+                      const f = allFoldersList.find(x => x.id === folderId);
+                      return (f && f.parentId) ? getDepth(f.parentId, depth + 1) : depth;
+                    };
+                    const buildTree = (parentId = null) => {
+                      let result = [];
+                      const children = allFoldersList.filter(f => f.parentId === parentId);
+                      for (const child of children) {
+                        result.push(child);
+                        result = result.concat(buildTree(child.id));
+                      }
+                      return result;
+                    };
+                    const sortedFolders = buildTree(null);
+                    return sortedFolders.map(folder => {
+                      const depth = getDepth(folder.id);
+                      return (
+                        <div
+                          key={folder.id}
+                          onClick={() => executeDestinationAction(folder.id)}
+                          style={{ padding: '0.75rem', cursor: 'pointer', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: `${depth * 1.5}rem` }}
+                          onMouseOver={e => e.currentTarget.style.background = 'var(--bg-surface-hover)'}
+                          onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                          <Folder size={18} color="var(--text-secondary)" />
+                          <span>{folder.name}</span>
+                        </div>
+                      );
+                    });
+                  })()}
                 </>
               )}
             </div>
