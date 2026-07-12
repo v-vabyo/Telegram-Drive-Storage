@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getClient, saveSession } from '@/lib/telegram';
+import { getClient, saveSession, createTempClient } from '@/lib/telegram';
 import { cookies } from 'next/headers';
 
 export async function POST(req) {
@@ -7,7 +7,7 @@ export async function POST(req) {
     const { phoneNumber } = await req.json();
     if (!phoneNumber) return NextResponse.json({ error: 'Phone number required' }, { status: 400 });
 
-    const client = await getClient(true);
+    const client = await createTempClient();
     
     const result = await client.sendCode(
       { apiId: Number(process.env.TELEGRAM_API_ID), apiHash: process.env.TELEGRAM_API_HASH },

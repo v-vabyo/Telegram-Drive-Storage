@@ -11,6 +11,17 @@ const globalForTelegram = global;
 const clientPool = globalForTelegram.clientPool || new Map();
 if (process.env.NODE_ENV !== 'production') globalForTelegram.clientPool = clientPool;
 
+export async function createTempClient() {
+  const sessionId = "temp_" + crypto.randomBytes(16).toString('hex');
+  const client = new TelegramClient(new StringSession(""), apiId, apiHash, {
+    connectionRetries: 5,
+  });
+  await client.connect();
+  clientPool.set(sessionId, client);
+  client.currentSessionId = sessionId;
+  return client;
+}
+
 export async function getClient(allowTemp = false) {
   const cookieStore = cookies();
   let sessionId;
@@ -32,15 +43,7 @@ export async function getClient(allowTemp = false) {
     if (!allowTemp) {
       throw new Error('No session cookie found');
     }
-    // Generate new temporary session for login
-    sessionId = "temp_" + crypto.randomBytes(16).toString('hex');
-    const client = new TelegramClient(new StringSession(""), apiId, apiHash, {
-      connectionRetries: 5,
-    });
-    await client.connect();
-    clientPool.set(sessionId, client);
-    client.currentSessionId = sessionId;
-    return client;
+    return await createTempClient();
   }
 
   if (clientPool.has(sessionId)) {
@@ -50,6 +53,7 @@ export async function getClient(allowTemp = false) {
     }
     return client;
   }
+
 
   const sessionRow = await getQuery("SELECT sessionString FROM sessions WHERE id = ?", [sessionId]);
   if (!sessionRow) {
