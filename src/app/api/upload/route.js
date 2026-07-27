@@ -126,15 +126,37 @@ export async function POST(req) {
         }
       }
       
+    // Check if file already exists for versioning
+    const existingFileQuery = folderId 
+      ? 'SELECT id, telegramFileId, size FROM files WHERE filename = ? AND folderId = ? AND ownerId = ? AND isDeleted = 0'
+      : 'SELECT id, telegramFileId, size FROM files WHERE filename = ? AND folderId IS NULL AND ownerId = ? AND isDeleted = 0';
+    
+    const params = folderId ? [file.name, folderId, userId] : [file.name, userId];
+    const existingFile = await getQuery(existingFileQuery, params);
+
+    if (existingFile) {
+      // Store old version
+      const versionId = crypto.randomUUID();
+      await runQuery(
+        'INSERT INTO file_versions (id, fileId, telegramFileId, size) VALUES (?, ?, ?, ?)',
+        [versionId, existingFile.id, existingFile.telegramFileId, existingFile.size]
+      );
+      
+      // Update file with new version
+      await runQuery(
+        'UPDATE files SET size = ?, telegramFileId = ?, mimeType = ?, createdAt = CURRENT_TIMESTAMP WHERE id = ?',
+        [file.size, telegramFileId, file.type, existingFile.id]
+      );
+      
+      return NextResponse.json({ success: true, id: existingFile.id, filename: file.name, versioned: true });
+    } else {
       const id = crypto.randomUUID();
-
-    // Save metadata to SQLite
-    await runQuery(
-      'INSERT INTO files (id, filename, size, mimeType, telegramFileId, folderId, ownerId) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [id, file.name, file.size, file.type, telegramFileId, folderId || null, userId]
-    );
-
-    return NextResponse.json({ success: true, id, filename: file.name });
+      await runQuery(
+        'INSERT INTO files (id, filename, size, mimeType, telegramFileId, folderId, ownerId) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [id, file.name, file.size, file.type, telegramFileId, folderId || null, userId]
+      );
+      return NextResponse.json({ success: true, id, filename: file.name });
+    }
   } catch (error) {
     console.error('Upload error:', error);
     return NextResponse.json({ error: error.message || 'Failed to upload file' }, { status: 500 });

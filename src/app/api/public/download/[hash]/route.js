@@ -1,37 +1,70 @@
 import { NextResponse } from 'next/server';
-import { getClient, getUserId } from '@/lib/telegram';
+import { getClientByUserId } from '@/lib/telegram';
 import { getQuery } from '@/lib/db';
 import bigInt from 'big-integer';
+import crypto from 'crypto';
 
 export async function GET(req, { params }) {
   try {
     const resolvedParams = await params;
-    const id = resolvedParams.id;
-    if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
+    const hashId = resolvedParams.hash;
+    if (!hashId) return NextResponse.json({ error: 'Missing hash' }, { status: 400 });
 
-    const userId = await getUserId();
-    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { searchParams } = new URL(req.url);
+    const queryFileId = searchParams.get('fileId');
+    const password = searchParams.get('password');
 
-    const fileMeta = await getQuery('SELECT filename, size, mimeType, telegramFileId, folderId FROM files WHERE id = ? AND ownerId = ?', [id, userId]);
+    const share = await getQuery('SELECT fileId, folderId, ownerId, expiresAt, passwordHash FROM shared_links WHERE id = ?', [hashId]);
+    
+    if (!share) {
+      return NextResponse.json({ error: 'Link not found or expired' }, { status: 404 });
+    }
+
+    if (share.expiresAt && new Date(share.expiresAt) < new Date()) {
+      return NextResponse.json({ error: 'Link expired' }, { status: 410 });
+    }
+    
+    if (share.passwordHash) {
+      if (!password) {
+        return NextResponse.json({ error: 'Password required' }, { status: 401 });
+      }
+      const inputHash = crypto.createHash('sha256').update(password).digest('hex');
+      if (inputHash !== share.passwordHash) {
+        return NextResponse.json({ error: 'Invalid password' }, { status: 401 });
+      }
+    }
+
+    let targetDbFileId = share.fileId;
+
+    if (share.folderId && share.folderId !== 'NONE') {
+      if (!queryFileId) {
+        return NextResponse.json({ error: 'Missing fileId for folder download' }, { status: 400 });
+      }
+      targetDbFileId = queryFileId;
+      
+      // Verify that this file belongs to the shared folder
+      const verifyFile = await getQuery('SELECT id FROM files WHERE id = ? AND folderId = ? AND ownerId = ? AND isDeleted = 0', [targetDbFileId, share.folderId, share.ownerId]);
+      if (!verifyFile) {
+        return NextResponse.json({ error: 'File not found in this folder' }, { status: 404 });
+      }
+    }
+
+    const fileMeta = await getQuery('SELECT filename, size, mimeType, telegramFileId, folderId FROM files WHERE id = ? AND ownerId = ? AND isDeleted = 0', [targetDbFileId, share.ownerId]);
     
     if (!fileMeta) {
-      return NextResponse.json({ error: 'File not found or unauthorized' }, { status: 404 });
+      return NextResponse.json({ error: 'File not found' }, { status: 404 });
     }
 
-    const client = await getClient();
-    const isAuthorized = await client.checkAuthorization();
-    if (!isAuthorized) {
-      return NextResponse.json({ error: 'Not authorized' }, { status: 401 });
-    }
+    const client = await getClientByUserId(share.ownerId);
 
     let targetPeer = "me";
     if (fileMeta.folderId) {
-      const folderMeta = await getQuery('SELECT telegramChannelId FROM folders WHERE id = ? AND ownerId = ?', [fileMeta.folderId, userId]);
+      const folderMeta = await getQuery('SELECT telegramChannelId FROM folders WHERE id = ?', [fileMeta.folderId]);
       if (folderMeta && folderMeta.telegramChannelId) {
         targetPeer = folderMeta.telegramChannelId;
       }
     } else {
-      const setting = await getQuery('SELECT value FROM settings WHERE key = ?', [`rootChannelId_${userId}`]);
+      const setting = await getQuery('SELECT value FROM settings WHERE key = ?', [`rootChannelId_${share.ownerId}`]);
       if (setting && setting.value) {
         targetPeer = setting.value;
       }
@@ -76,13 +109,13 @@ export async function GET(req, { params }) {
         try {
           const iterOptions = {
             file: message.media,
-            requestSize: 1024 * 1024, // 1 MB chunks for faster loading
+            requestSize: 1024 * 1024,
           };
 
           if (isPartial) {
             iterOptions.offset = bigInt(start);
             iterOptions.limit = end - start + 1;
-            iterOptions.requestSize = 256 * 1024; // Smaller chunks for much faster preview/seeking
+            iterOptions.requestSize = 256 * 1024;
           }
 
           const iterator = client.iterDownload(iterOptions);
@@ -103,7 +136,7 @@ export async function GET(req, { params }) {
       headers
     });
   } catch (error) {
-    console.error('Download error:', error);
+    console.error('Public download error:', error);
     return NextResponse.json({ error: error.message || 'Failed to download file' }, { status: 500 });
   }
 }

@@ -7,6 +7,9 @@ export async function GET(req) {
     const userId = await getUserId();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+    // Cleanup expired links before fetching
+    await runQuery('DELETE FROM shared_links WHERE expiresAt IS NOT NULL AND expiresAt < ?', [new Date().toISOString()]);
+
     const { searchParams } = new URL(req.url);
     const folderId = searchParams.get('folderId');
 
@@ -17,22 +20,33 @@ export async function GET(req) {
     let params = [userId];
 
     if (filter === 'trash') {
-      sql = 'SELECT id, filename, size, mimeType, isStarred, isDeleted, createdAt, deletedAt FROM files WHERE ownerId = ? AND isDeleted = 1 ORDER BY deletedAt DESC';
+      sql = 'SELECT id, filename, size, mimeType, isStarred, isDeleted, createdAt, deletedAt, (SELECT id FROM shared_links sl WHERE sl.fileId = files.id LIMIT 1) as shareHash FROM files WHERE ownerId = ? AND isDeleted = 1 ORDER BY deletedAt DESC';
     } else if (filter === 'starred') {
-      sql = 'SELECT id, filename, size, mimeType, isStarred, isDeleted, createdAt FROM files WHERE ownerId = ? AND isDeleted = 0 AND isStarred = 1 ORDER BY createdAt DESC';
+      sql = 'SELECT id, filename, size, mimeType, isStarred, isDeleted, createdAt, (SELECT id FROM shared_links sl WHERE sl.fileId = files.id LIMIT 1) as shareHash FROM files WHERE ownerId = ? AND isDeleted = 0 AND isStarred = 1 ORDER BY createdAt DESC';
     } else if (filter === 'recent') {
-      sql = 'SELECT id, filename, size, mimeType, isStarred, isDeleted, createdAt FROM files WHERE ownerId = ? AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 50';
+      sql = 'SELECT id, filename, size, mimeType, isStarred, isDeleted, createdAt, (SELECT id FROM shared_links sl WHERE sl.fileId = files.id LIMIT 1) as shareHash FROM files WHERE ownerId = ? AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 50';
     } else if (filter === 'media') {
-      sql = `SELECT id, filename, size, mimeType, isStarred, isDeleted, createdAt FROM files WHERE ownerId = ? AND isDeleted = 0 AND (mimeType LIKE 'image/%' OR mimeType LIKE 'video/%' OR filename LIKE '%.jpg' OR filename LIKE '%.jpeg' OR filename LIKE '%.png' OR filename LIKE '%.gif' OR filename LIKE '%.webp' OR filename LIKE '%.mp4' OR filename LIKE '%.mkv' OR filename LIKE '%.avi' OR filename LIKE '%.mov' OR filename LIKE '%.webm') ORDER BY createdAt DESC`;
+      sql = `SELECT id, filename, size, mimeType, isStarred, isDeleted, createdAt, (SELECT id FROM shared_links sl WHERE sl.fileId = files.id LIMIT 1) as shareHash FROM files WHERE ownerId = ? AND isDeleted = 0 AND (mimeType LIKE 'image/%' OR mimeType LIKE 'video/%' OR filename LIKE '%.jpg' OR filename LIKE '%.jpeg' OR filename LIKE '%.png' OR filename LIKE '%.gif' OR filename LIKE '%.webp' OR filename LIKE '%.mp4' OR filename LIKE '%.mkv' OR filename LIKE '%.avi' OR filename LIKE '%.mov' OR filename LIKE '%.webm') ORDER BY createdAt DESC`;
+    } else if (filter === 'document') {
+      sql = `SELECT id, filename, size, mimeType, isStarred, isDeleted, createdAt, (SELECT id FROM shared_links sl WHERE sl.fileId = files.id LIMIT 1) as shareHash FROM files WHERE ownerId = ? AND isDeleted = 0 AND (mimeType LIKE 'application/pdf' OR mimeType LIKE 'application/msword' OR mimeType LIKE '%wordprocessingml%' OR mimeType LIKE '%spreadsheetml%' OR mimeType LIKE '%presentationml%' OR mimeType LIKE 'text/%') ORDER BY createdAt DESC`;
     } else if (search) {
-      sql = 'SELECT id, filename, size, mimeType, isStarred, isDeleted, createdAt FROM files WHERE ownerId = ? AND isDeleted = 0 AND filename LIKE ? ORDER BY createdAt DESC';
+      sql = 'SELECT id, filename, size, mimeType, isStarred, isDeleted, createdAt, (SELECT id FROM shared_links sl WHERE sl.fileId = files.id LIMIT 1) as shareHash FROM files WHERE ownerId = ? AND isDeleted = 0 AND filename LIKE ? ORDER BY createdAt DESC';
       params.push(`%${search}%`);
     } else if (folderId) {
-      sql = 'SELECT id, filename, size, mimeType, isStarred, isDeleted, createdAt FROM files WHERE ownerId = ? AND isDeleted = 0 AND folderId = ? ORDER BY createdAt DESC';
+      sql = 'SELECT id, filename, size, mimeType, isStarred, isDeleted, createdAt, (SELECT id FROM shared_links sl WHERE sl.fileId = files.id LIMIT 1) as shareHash FROM files WHERE ownerId = ? AND isDeleted = 0 AND folderId = ? ORDER BY createdAt DESC';
       params.push(folderId);
     } else {
-      sql = 'SELECT id, filename, size, mimeType, isStarred, isDeleted, createdAt FROM files WHERE ownerId = ? AND isDeleted = 0 AND folderId IS NULL ORDER BY createdAt DESC';
+      sql = 'SELECT id, filename, size, mimeType, isStarred, isDeleted, createdAt, (SELECT id FROM shared_links sl WHERE sl.fileId = files.id LIMIT 1) as shareHash FROM files WHERE ownerId = ? AND isDeleted = 0 AND folderId IS NULL ORDER BY createdAt DESC';
     }
+
+    sql = sql.replace(' FROM files', ', EXISTS(SELECT 1 FROM shared_tree st WHERE st.id = files.folderId) as isImplicitlyShared FROM files');
+    const cte = `WITH RECURSIVE shared_tree AS (
+      SELECT folderId as id FROM shared_links WHERE folderId IS NOT NULL
+      UNION ALL
+      SELECT f.id FROM folders f
+      INNER JOIN shared_tree st ON f.parentId = st.id
+    ) `;
+    sql = cte + sql;
 
     const files = await allQuery(sql, params);
     

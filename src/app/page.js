@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-import { Upload, File as FileIcon, Download, Lock, Loader2, FolderPlus, Folder, ChevronRight, Home as HomeIcon, Trash2, Search, LayoutGrid, List as ListIcon, Plus, X, Cloud, Edit2, LogOut, Info, User, ChevronDown, Moon, Sun, Image as ImageIcon, FileText, Film, Music, Archive, MoreVertical, Copy, Clock, Star, RotateCcw } from 'lucide-react';
+import { Upload, File as FileIcon, Download, Lock, Loader2, FolderPlus, Folder, ChevronRight, ChevronLeft, Home as HomeIcon, Trash2, Search, LayoutGrid, List as ListIcon, Plus, X, Cloud, Edit2, LogOut, Info, User, ChevronDown, Moon, Sun, Image as ImageIcon, FileText, Film, Music, Archive, MoreVertical, Copy, Clock, Star, RotateCcw, FolderUp, Share2 } from 'lucide-react';
 import { countryCodes } from '../lib/countries';
 
 const dict = {
@@ -43,6 +43,7 @@ const dict = {
     newBtn: "Baru",
     newFolder: "Folder Baru",
     uploadFile: "Unggah File",
+    uploadFolder: "Unggah Folder",
     myFiles: "File Saya",
     storageCapacity: "Kapasitas Penyimpanan",
     unlimited: "Unlimited",
@@ -125,6 +126,7 @@ const dict = {
     newBtn: "New",
     newFolder: "New Folder",
     uploadFile: "Upload File",
+    uploadFolder: "Upload Folder",
     myFiles: "My Files",
     storageCapacity: "Storage Capacity",
     unlimited: "Unlimited",
@@ -177,6 +179,71 @@ const getRemainingDays = (deletedAt) => {
   const targetDate = new Date(delDate.getTime() + 30 * 24 * 60 * 60 * 1000);
   const diffDays = Math.ceil((targetDate - new Date()) / (1000 * 60 * 60 * 24));
   return Math.max(0, diffDays);
+};
+
+const VideoPreview = ({ fileId }) => {
+  const videoRef = useRef(null);
+  const [isVisible, setIsVisible] = useState(false);
+  const [cachedThumb, setCachedThumb] = useState(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const thumb = localStorage.getItem(`tg_thumb_${fileId}`);
+      if (thumb) setCachedThumb(thumb);
+    }
+  }, [fileId]);
+
+  useEffect(() => {
+    if (cachedThumb) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        setIsVisible(entries[0].isIntersecting);
+      },
+      { rootMargin: '200px' }
+    );
+    if (videoRef.current) observer.observe(videoRef.current);
+    return () => observer.disconnect();
+  }, [cachedThumb]);
+
+  const handleVideoLoad = (e) => {
+    const video = e.target;
+    if (!cachedThumb && video.videoWidth) {
+      try {
+        const canvas = document.createElement('canvas');
+        const scale = 200 / Math.max(video.videoWidth, video.videoHeight);
+        canvas.width = video.videoWidth * scale;
+        canvas.height = video.videoHeight * scale;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUri = canvas.toDataURL('image/jpeg', 0.6);
+        localStorage.setItem(`tg_thumb_${fileId}`, dataUri);
+        setCachedThumb(dataUri);
+      } catch (err) {
+        console.error('Failed to cache thumb', err);
+      }
+    }
+  };
+
+  if (cachedThumb) {
+    return <img src={cachedThumb} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
+  }
+
+  return (
+    <div ref={videoRef} style={{ width: '100%', height: '100%', borderRadius: '12px', overflow: 'hidden', background: 'var(--bg-base)' }}>
+      {isVisible && (
+        <video
+          src={`/api/download/${fileId}#t=1`}
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          preload="metadata"
+          muted
+          playsInline
+          crossOrigin="anonymous"
+          onLoadedData={handleVideoLoad}
+          onSeeked={handleVideoLoad}
+        />
+      )}
+    </div>
+  );
 };
 
 export default function Home() {
@@ -278,6 +345,7 @@ export default function Home() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [previewFile, setPreviewFile] = useState(null);
+  const [slideDirection, setSlideDirection] = useState('');
   const [dialogConfig, setDialogConfig] = useState({ isOpen: false, type: '', title: '', message: '', defaultValue: '', inputValue: '', onConfirm: null });
 
   // Drag selection state
@@ -409,6 +477,7 @@ export default function Home() {
   const [destinationModalTargets, setDestinationModalTargets] = useState([]); // Array of {id, name/filename, _type}
   const [allFoldersList, setAllFoldersList] = useState([]);
   const [destinationModalLoading, setDestinationModalLoading] = useState(false);
+  const [shareModalConfig, setShareModalConfig] = useState({ isOpen: false, item: null, password: '', expiresInHours: 0, loading: false });
 
   const calculateMenuPosition = (x, y) => {
     const menuWidth = 220;
@@ -587,10 +656,16 @@ export default function Home() {
   };
 
   const fetchData = async (folderId, search = '', filter = null) => {
-    setSelectedItems(new Set());
-    setIsFetching(true);
-    setFiles([]);
-    setFolders([]);
+    const isRefresh = (folderId === currentFolderId && search === searchQuery && filter === currentFilter && !isInitialLoad);
+    
+    if (!isRefresh) {
+      setSelectedItems(new Set());
+      setIsFetching(true);
+      setFiles([]);
+      setFolders([]);
+    } else {
+      setSelectedItems(new Set());
+    }
     try {
       const qs = new URLSearchParams();
       if (folderId) qs.append('folderId', folderId);
@@ -716,6 +791,118 @@ export default function Home() {
       if (action !== 'star' && action !== 'unstar') setSelectedItems(new Set());
     } catch (err) {
       showDialog('alert', 'Error', 'Gagal memproses beberapa item.');
+    }
+  };
+
+function formatTimeRemaining(dateString, realtime = false) {
+  if (!dateString) return 'Selamanya';
+  const diff = new Date(dateString).getTime() - Date.now();
+  if (diff <= 0) return 'Telah kedaluwarsa';
+  
+  if (realtime) {
+    const totalSeconds = Math.floor(diff / 1000);
+    if (totalSeconds < 60) return `${totalSeconds} detik lagi`;
+    if (totalSeconds < 3600) {
+      const mins = Math.floor(totalSeconds / 60);
+      const secs = totalSeconds % 60;
+      return `${mins} menit ${secs} detik lagi`;
+    }
+    const hours = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    if (hours < 24) return `${hours} jam ${mins} menit lagi`;
+    const days = Math.floor(hours / 24);
+    return `${days} hari ${hours % 24} jam lagi`;
+  }
+
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins} menit lagi`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} jam lagi`;
+  const days = Math.floor(hours / 24);
+  return `${days} hari lagi`;
+}
+
+const CountdownTimer = ({ expiresAt }) => {
+  const [timeLeft, setTimeLeft] = useState(() => formatTimeRemaining(expiresAt, true));
+
+  useEffect(() => {
+    if (!expiresAt) return;
+    const interval = setInterval(() => {
+      setTimeLeft(formatTimeRemaining(expiresAt, true));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [expiresAt]);
+
+  return <>{timeLeft}</>;
+};
+
+  const openShareModal = async (item) => {
+    setShareModalConfig({ isOpen: true, item, password: '', expiresInMinutes: 0, loading: true, hash: item.shareHash || null, expiresAt: null });
+    if (item.shareHash) {
+      const itemType = item.filename ? 'file' : 'folder';
+      try {
+        const res = await fetch(`/api/share?itemId=${item.id}&itemType=${itemType}`);
+        const data = await res.json();
+        if (data.share) {
+          setShareModalConfig(prev => ({ ...prev, loading: false, expiresAt: data.share.expiresAt || null }));
+        } else {
+          // Link was auto-deleted because it expired
+          setShareModalConfig(prev => ({ ...prev, isOpen: false, loading: false }));
+          showDialog('alert', 'Informasi', 'Tautan publik ini telah dihapus otomatis karena batas waktunya telah habis.');
+          fetchData(currentFolderId, searchQuery, currentFilter);
+        }
+      } catch (err) {
+        console.error(err);
+        setShareModalConfig(prev => ({ ...prev, loading: false }));
+      }
+    } else {
+      setShareModalConfig(prev => ({ ...prev, loading: false }));
+    }
+  };
+
+  const revokeShareLink = async () => {
+    const { item } = shareModalConfig;
+    setShareModalConfig(prev => ({ ...prev, loading: true }));
+    const itemType = item.filename ? 'file' : 'folder';
+    try {
+      const res = await fetch(`/api/share?itemId=${item.id}&itemType=${itemType}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      setShareModalConfig(prev => ({ ...prev, loading: false, isOpen: false }));
+      if (data.success) {
+        showDialog('success', 'Berhasil', 'Tautan publik berhasil dihentikan.');
+        fetchData(currentFolderId, searchQuery, currentFilter);
+      }
+    } catch (err) {
+      console.error(err);
+      setShareModalConfig(prev => ({ ...prev, loading: false }));
+    }
+  };
+
+  const executeShareLink = async () => {
+    const { item, password, expiresInMinutes } = shareModalConfig;
+    setShareModalConfig(prev => ({ ...prev, loading: true }));
+    const itemType = item.filename ? 'file' : 'folder';
+    try {
+      const res = await fetch('/api/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId: item.id, itemType, password: password || undefined, expiresInMinutes: expiresInMinutes || undefined })
+      });
+      const data = await res.json();
+      setShareModalConfig(prev => ({ ...prev, loading: false, isOpen: false }));
+      if (data.success) {
+        const url = window.location.origin + '/share/' + data.shareId;
+        navigator.clipboard.writeText(url);
+        showDialog('share', 'Berhasil', 'Tautan publik berhasil dibuat dan disalin ke clipboard!', url);
+        fetchData(currentFolderId, searchQuery, currentFilter);
+      } else {
+        showDialog('alert', 'Error', data.error || 'Gagal membuat tautan.');
+      }
+    } catch (err) {
+      setShareModalConfig(prev => ({ ...prev, loading: false, isOpen: false }));
+      showDialog('alert', 'Error', 'Terjadi kesalahan sistem.');
     }
   };
 
@@ -1088,7 +1275,7 @@ export default function Home() {
     }
   };
 
-  const handleDrop = (e) => {
+  const handleDrop = async (e) => {
     e.preventDefault();
     setIsDragging(false);
 
@@ -1097,25 +1284,85 @@ export default function Home() {
       return;
     }
 
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      handleFileUpload({ target: { files: e.dataTransfer.files, value: null } });
+    if (e.dataTransfer.items) {
+      const filesList = [];
+      const promises = [];
+      for (let i = 0; i < e.dataTransfer.items.length; i++) {
+        const item = e.dataTransfer.items[i];
+        if (item.kind === 'file') {
+          const entry = item.webkitGetAsEntry();
+          if (entry) {
+            promises.push(traverseEntry(entry, '', filesList));
+          }
+        }
+      }
+      await Promise.all(promises);
+      if (filesList.length > 0) {
+        processUploadFiles(filesList);
+      }
+    } else if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const filesList = Array.from(e.dataTransfer.files).map(f => ({ file: f, relativeFolder: '' }));
+      processUploadFiles(filesList);
     }
   };
 
-  const handleFileUpload = (e) => {
+  const traverseEntry = (entry, path, filesList) => {
+    return new Promise((resolve) => {
+      if (entry.isFile) {
+        entry.file(file => {
+          let folder = path;
+          if (folder.endsWith('/')) folder = folder.slice(0, -1);
+          filesList.push({ file, relativeFolder: folder });
+          resolve();
+        });
+      } else if (entry.isDirectory) {
+        const dirReader = entry.createReader();
+        const readEntries = () => {
+          dirReader.readEntries(async (entries) => {
+            if (entries.length === 0) {
+              resolve();
+            } else {
+              const promises = [];
+              for (const child of entries) {
+                promises.push(traverseEntry(child, path + entry.name + '/', filesList));
+              }
+              await Promise.all(promises);
+              readEntries();
+            }
+          });
+        };
+        readEntries();
+      }
+    });
+  };
+
+  const handleFileInput = (e) => {
     const selectedFiles = Array.from(e.target.files);
     if (!selectedFiles.length) return;
+    const filesList = selectedFiles.map(file => {
+      let relativeFolder = '';
+      if (file.webkitRelativePath) {
+        const parts = file.webkitRelativePath.split('/');
+        parts.pop();
+        relativeFolder = parts.join('/');
+      }
+      return { file, relativeFolder };
+    });
+    processUploadFiles(filesList);
+    e.target.value = null;
+  };
 
+  const processUploadFiles = async (filesList) => {
     setShowNewMenu(false);
-
+    
     const validFiles = [];
     const oversizedFiles = [];
     
-    selectedFiles.forEach(file => {
-      if (file.size > 2 * 1024 * 1024 * 1024) {
-        oversizedFiles.push(file.name);
+    filesList.forEach(item => {
+      if (item.file.size > 2 * 1024 * 1024 * 1024) {
+        oversizedFiles.push(item.file.name);
       } else {
-        validFiles.push(file);
+        validFiles.push(item);
       }
     });
 
@@ -1123,21 +1370,57 @@ export default function Home() {
       showDialog('alert', 'Ukuran File Terlalu Besar', `File berikut melebihi batas maksimal 2 GB dan tidak dapat diunggah: ${oversizedFiles.join(', ')}`);
     }
 
-    if (!validFiles.length) {
-      e.target.value = null;
-      return;
+    if (!validFiles.length) return;
+
+    const foldersToCreate = [...new Set(validFiles.map(i => i.relativeFolder).filter(f => f !== ''))];
+    foldersToCreate.sort((a, b) => a.split('/').length - b.split('/').length);
+
+    const folderIdMap = {};
+
+    if (foldersToCreate.length > 0) {
+      setIsFetching(true);
+      try {
+        for (const folderPath of foldersToCreate) {
+          const parts = folderPath.split('/');
+          const folderName = parts.pop();
+          const parentPath = parts.join('/');
+          
+          let parentFolderId = currentFolderId;
+          if (parentPath !== '' && folderIdMap[parentPath]) {
+            parentFolderId = folderIdMap[parentPath];
+          }
+
+          const res = await fetch('/api/folders', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: folderName, parentId: parentFolderId || null })
+          });
+          const data = await res.json();
+          if (data.success) {
+            folderIdMap[folderPath] = data.id;
+          } else {
+            console.error('Failed to create folder:', folderPath, data.error);
+          }
+        }
+      } catch (err) {
+        console.error('Error creating folders:', err);
+      } finally {
+        setIsFetching(false);
+        fetchData(currentFolderId, searchQuery, currentFilter);
+      }
     }
 
-    const newUploads = validFiles.map(file => {
+    const newUploads = validFiles.map(item => {
       const uploadId = Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
       return {
         id: uploadId,
-        file,
-        name: file.name,
+        file: item.file,
+        name: item.file.name,
         progress: 0,
         status: 'uploading',
         xhr: null,
-        eventSource: null
+        eventSource: null,
+        targetFolderId: item.relativeFolder ? folderIdMap[item.relativeFolder] : currentFolderId
       };
     });
 
@@ -1146,14 +1429,14 @@ export default function Home() {
     newUploads.forEach(uploadItem => {
       startUpload(uploadItem);
     });
-
-    e.target.value = null;
   };
 
   const startUpload = (uploadItem) => {
     const formData = new FormData();
     formData.append('file', uploadItem.file);
-    if (currentFolderId) {
+    if (uploadItem.targetFolderId) {
+      formData.append('folderId', uploadItem.targetFolderId);
+    } else if (currentFolderId) {
       formData.append('folderId', currentFolderId);
     }
     formData.append('uploadId', uploadItem.id);
@@ -1219,6 +1502,73 @@ export default function Home() {
       setUploadQueue(prev => prev.filter(i => i.id !== id));
     }, 2000);
   };
+
+  const handleSort = (key) => {
+    setSortConfig(prev => ({
+      key,
+      order: prev.key === key && prev.order === 'asc' ? 'desc' : 'asc'
+    }));
+  };
+
+  const sortItems = (items, type) => {
+    return [...items].sort((a, b) => {
+      let valA, valB;
+      if (sortConfig.key === 'name') {
+        valA = (type === 'folder' ? a.name : a.filename).toLowerCase();
+        valB = (type === 'folder' ? b.name : b.filename).toLowerCase();
+      } else if (sortConfig.key === 'type') {
+        valA = type === 'folder' ? 'folder' : (a.filename.includes('.') ? a.filename.split('.').pop().toLowerCase() : '');
+        valB = type === 'folder' ? 'folder' : (b.filename.includes('.') ? b.filename.split('.').pop().toLowerCase() : '');
+      } else if (sortConfig.key === 'size') {
+        valA = a.size || 0;
+        valB = b.size || 0;
+      } else if (sortConfig.key === 'date') {
+        valA = new Date(a.createdAt).getTime();
+        valB = new Date(b.createdAt).getTime();
+      }
+
+      if (typeof valA === 'string') {
+        return sortConfig.order === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      }
+      return sortConfig.order === 'asc' ? valA - valB : valB - valA;
+    });
+  };
+
+  const filteredFolders = sortItems(folders, 'folder');
+  const filteredFiles = sortItems(files, 'file');
+
+  const formatSize = (bytes) => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const currentViewMode = currentFilter === 'media' ? 'grid' : viewMode;
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (!previewFile) return;
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        const direction = e.key === 'ArrowLeft' ? -1 : 1;
+        const media = filteredFiles.filter(f => {
+          const ext = f.filename.includes('.') ? f.filename.split('.').pop().toLowerCase() : '';
+          return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mkv', 'avi', 'mov', 'webm'].includes(ext);
+        });
+        if (media.length <= 1) return;
+        const currentIndex = media.findIndex(f => f.id === previewFile.id);
+        if (currentIndex === -1) return;
+        let newIndex = currentIndex + direction;
+        if (newIndex < 0) newIndex = media.length - 1;
+        if (newIndex >= media.length) newIndex = 0;
+        setSlideDirection(direction === 1 ? 'right' : 'left');
+        setPreviewFile(media[newIndex]);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [previewFile, filteredFiles]);
 
   if (isAuthorized === null || (isAuthorized && isInitialLoad)) {
     return (
@@ -1407,50 +1757,6 @@ export default function Home() {
     );
   }
 
-  const handleSort = (key) => {
-    setSortConfig(prev => ({
-      key,
-      order: prev.key === key && prev.order === 'asc' ? 'desc' : 'asc'
-    }));
-  };
-
-  const sortItems = (items, type) => {
-    return [...items].sort((a, b) => {
-      let valA, valB;
-      if (sortConfig.key === 'name') {
-        valA = (type === 'folder' ? a.name : a.filename).toLowerCase();
-        valB = (type === 'folder' ? b.name : b.filename).toLowerCase();
-      } else if (sortConfig.key === 'type') {
-        valA = type === 'folder' ? 'folder' : (a.filename.includes('.') ? a.filename.split('.').pop().toLowerCase() : '');
-        valB = type === 'folder' ? 'folder' : (b.filename.includes('.') ? b.filename.split('.').pop().toLowerCase() : '');
-      } else if (sortConfig.key === 'size') {
-        valA = a.size || 0;
-        valB = b.size || 0;
-      } else if (sortConfig.key === 'date') {
-        valA = new Date(a.createdAt).getTime();
-        valB = new Date(b.createdAt).getTime();
-      }
-
-      if (typeof valA === 'string') {
-        return sortConfig.order === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
-      }
-      return sortConfig.order === 'asc' ? valA - valB : valB - valA;
-    });
-  };
-
-  const filteredFolders = sortItems(folders, 'folder');
-  const filteredFiles = sortItems(files, 'file');
-
-  const formatSize = (bytes) => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
-  const currentViewMode = currentFilter === 'media' ? 'grid' : viewMode;
-
   return (
     <div className="app-layout" onContextMenu={handleGlobalContextMenu}>
       {/* Sidebar */}
@@ -1489,7 +1795,15 @@ export default function Home() {
                   onMouseOut={(e) => e.currentTarget.style.background = 'none'}
                 >
                   <Upload size={18} color="var(--text-secondary)" /> {t.uploadFile}
-                  <input type="file" multiple style={{ display: 'none' }} onChange={handleFileUpload} />
+                  <input type="file" multiple style={{ display: 'none' }} onChange={handleFileInput} />
+                </label>
+                <label
+                  style={{ width: '100%', padding: '0.75rem 1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-primary)', fontSize: '0.9rem' }}
+                  onMouseOver={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.04)'}
+                  onMouseOut={(e) => e.currentTarget.style.background = 'none'}
+                >
+                  <FolderUp size={18} color="var(--text-secondary)" /> {t.uploadFolder}
+                  <input type="file" webkitdirectory="" directory="" multiple style={{ display: 'none' }} onChange={handleFileInput} />
                 </label>
               </div>
             </>
@@ -1585,14 +1899,42 @@ export default function Home() {
         )}
 
         <header className="topbar">
-          <div className="search-bar">
-            <Search size={18} color="var(--text-secondary)" />
-            <input
-              type="text"
-              placeholder={t.searchInFolder}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+          <div className="search-bar" style={{ display: 'flex', gap: '8px', background: 'transparent', padding: 0 }}>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: 'var(--bg-tertiary)', borderRadius: '12px', padding: '0 16px' }}>
+              <Search size={18} color="var(--text-secondary)" />
+              <input
+                type="text"
+                placeholder={t.searchInFolder || "Cari file global..."}
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  if (e.target.value.trim() !== '') {
+                    setCurrentFolderId(null);
+                    setCurrentPath([]);
+                    if (currentFilter && currentFilter !== 'document' && currentFilter !== 'media') {
+                      setCurrentFilter(null);
+                    }
+                  }
+                }}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', padding: '12px', width: '100%' }}
+              />
+            </div>
+            <select
+              value={currentFilter || ''}
+              onChange={(e) => {
+                const val = e.target.value;
+                setCurrentFilter(val || null);
+                if (val === 'media' || val === 'document') {
+                  setCurrentFolderId(null);
+                  setCurrentPath([]);
+                }
+              }}
+              style={{ background: 'var(--bg-tertiary)', border: 'none', color: 'var(--text-primary)', borderRadius: '12px', padding: '0 16px', outline: 'none', cursor: 'pointer' }}
+            >
+              <option value="">Semua File</option>
+              <option value="document">Dokumen</option>
+              <option value="media">Media</option>
+            </select>
           </div>
 
           <div className="topbar-actions">
@@ -1761,15 +2103,16 @@ export default function Home() {
                   <div className="upload-text">{t.dropToUpload}</div>
                   <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '0.5rem' }}>{t.dragSubtitle}</div>
                 </div>
-                <input type="file" multiple className="file-input" style={{ display: 'none' }} onChange={handleFileUpload} />
+                <input type="file" multiple className="file-input" style={{ display: 'none' }} onChange={handleFileInput} />
               </label>
             )
           )}
 
           {searchQuery && filteredFolders.length === 0 && filteredFiles.length === 0 && (
             <div className="empty-state">
-              <Search size={48} />
-              <p>{t.noResults} "{searchQuery}"</p>
+              <div className="empty-icon"><Search size={48} /></div>
+              <p>{t.noResults} &quot;{searchQuery}&quot;</p>
+              <p className="empty-subtitle">Coba gunakan kata kunci lain.</p>
             </div>
           )}
 
@@ -1874,7 +2217,8 @@ export default function Home() {
                             </div>
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                            {folder.isStarred ? <Star size={16} fill="#eab308" color="#eab308" style={{ flexShrink: 0 }} /> : null}
+                            {folder.isStarred === 1 && <Star size={14} color="#f59e0b" fill="#f59e0b" style={{ flexShrink: 0 }} />}
+                            {(folder.shareHash || folder.isImplicitlyShared) ? <Share2 size={14} color="var(--brand-primary)" style={{ flexShrink: 0 }} /> : null}
                             <div className="action-menu-container" onClick={e => e.stopPropagation()}>
                               <button className="action-btn" onClick={(e) => { e.stopPropagation(); handleItemContextMenu(e, 'folder', folder); }}>
                                 <MoreVertical size={16} />
@@ -1894,6 +2238,8 @@ export default function Home() {
                         <div className="file-info">
                           <div className="file-name" title={folder.name} style={{ flex: 2, display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
                             <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{folder.name}</span>
+                            {folder.isStarred === 1 && <Star size={14} color="#f59e0b" fill="#f59e0b" style={{ flexShrink: 0 }} />}
+                            {(folder.shareHash || folder.isImplicitlyShared) ? <Share2 size={14} color="var(--brand-primary)" style={{ flexShrink: 0 }} /> : null}
                             {isInTrash && folder.deletedAt && (
                               <span style={{ fontSize: '0.75rem', color: '#ef4444', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 6px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '12px', whiteSpace: 'nowrap' }}>
                                 <Clock size={12} /> {getRemainingDays(folder.deletedAt)} hari tersisa
@@ -2013,7 +2359,8 @@ export default function Home() {
                             </div>
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                            {file.isStarred ? <Star size={16} fill="#eab308" color="#eab308" style={{ flexShrink: 0 }} /> : null}
+                            {file.isStarred === 1 && <Star size={14} color="#f59e0b" fill="#f59e0b" style={{ flexShrink: 0 }} />}
+                            {(file.shareHash || file.isImplicitlyShared) ? <Share2 size={14} color="var(--brand-primary)" style={{ flexShrink: 0 }} /> : null}
                             <div className="action-menu-container" onClick={e => e.stopPropagation()}>
                               <button className="action-btn" onClick={(e) => { e.stopPropagation(); handleItemContextMenu(e, 'file', file); }}>
                                 <MoreVertical size={16} />
@@ -2025,7 +2372,7 @@ export default function Home() {
                           {isImage ? (
                             <img src={`/api/download/${file.id}`} alt={file.filename} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '12px' }} loading="lazy" />
                           ) : isVideo ? (
-                            <video src={`/api/download/${file.id}#t=0.1`} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '12px' }} preload="metadata" muted playsInline />
+                            <VideoPreview fileId={file.id} />
                           ) : (
                             IconComponent
                           )}
@@ -2039,6 +2386,8 @@ export default function Home() {
                         <div className="file-info">
                           <div className="file-name" title={file.filename} style={{ flex: 2, display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
                             <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nameWithoutExt}</span>
+                            {file.isStarred === 1 && <Star size={14} color="#f59e0b" fill="#f59e0b" style={{ flexShrink: 0 }} />}
+                            {(file.shareHash || file.isImplicitlyShared) ? <Share2 size={14} color="var(--brand-primary)" style={{ flexShrink: 0 }} /> : null}
                             {isInTrash && file.deletedAt && (
                               <span style={{ fontSize: '0.75rem', color: '#ef4444', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 6px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '12px', whiteSpace: 'nowrap' }}>
                                 <Clock size={12} /> {getRemainingDays(file.deletedAt)} hari tersisa
@@ -2064,9 +2413,9 @@ export default function Home() {
                               <button className={`action-btn ${file.isStarred ? 'persistent' : ''}`} title={file.isStarred ? "Hapus Bintang" : "Beri Bintang"} onClick={(e) => handleAction(e, 'file', file.id, file.isStarred ? 'unstar' : 'star')}>
                                 <Star size={16} fill={file.isStarred ? "#eab308" : "none"} color={file.isStarred ? "#eab308" : "currentColor"} />
                               </button>
-                              <button className="action-btn" title={t.copyLink} onClick={(e) => { e.stopPropagation(); const link = `${window.location.origin}/api/download/${file.id}`; navigator.clipboard.writeText(link); showDialog('alert', 'Berhasil', t.successCopy); }}>
-                                <Copy size={16} />
-                              </button>
+                              <div className="action-btn" onClick={() => { setContextMenu(prev => ({...prev, isOpen: false})); openShareModal(file); }} title="Bagikan">
+                                <Share2 size={16} />
+                              </div>
                               <a href={`/api/download/${file.id}`} onClick={e => e.stopPropagation()} className="action-btn primary" title={t.download}>
                                 <Download size={16} />
                               </a>
@@ -2119,6 +2468,115 @@ export default function Home() {
         </div>
       )}
 
+      {/* Share Modal */}
+      {shareModalConfig.isOpen && (
+        <div className="modal-overlay" style={{ zIndex: 2000 }} onClick={() => !shareModalConfig.loading && setShareModalConfig(prev => ({ ...prev, isOpen: false }))}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ width: '400px' }}>
+            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0 }}>Bagikan {shareModalConfig.item?.filename || shareModalConfig.item?.name}</h3>
+              <button className="modal-close" style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', color: 'var(--text-secondary)' }} onClick={() => !shareModalConfig.loading && setShareModalConfig(prev => ({ ...prev, isOpen: false }))}><X size={20} /></button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {shareModalConfig.hash ? (
+                <div style={{ background: 'var(--bg-base)', padding: '1rem', borderRadius: '8px', marginBottom: '1rem' }}>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Link Publik:</p>
+                  <input readOnly value={`${typeof window !== 'undefined' ? window.location.origin : ''}/share/${shareModalConfig.hash}`} style={{ width: '100%', padding: '0.5rem', background: 'transparent', border: '1px solid var(--border-light)', borderRadius: '4px', color: 'var(--text-primary)', fontFamily: 'inherit' }} onClick={e => e.target.select()} />
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.75rem', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Waktu Kedaluwarsa:</span>
+                    <span style={{ fontWeight: 500 }}>
+                      {shareModalConfig.loading ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}><Loader2 size={12} className="spin" /></span>
+                      ) : (
+                        <CountdownTimer expiresAt={shareModalConfig.expiresAt} />
+                      )}
+                    </span>
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="form-label">Waktu Kedaluwarsa</label>
+                    <div style={{ position: 'relative' }}>
+                      <select 
+                        className="form-input" 
+                        value={shareModalConfig.expiresInMinutes} 
+                        onChange={e => setShareModalConfig(prev => ({ ...prev, expiresInMinutes: parseInt(e.target.value) }))}
+                        style={{ width: '100%', padding: '0.75rem 2.5rem 0.75rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border-light)', background: 'var(--bg-base)', color: 'var(--text-primary)', appearance: 'none', WebkitAppearance: 'none', cursor: 'pointer' }}
+                      >
+                        <option value={0}>Selamanya</option>
+                        <option value={1}>1 Menit</option>
+                        <option value={5}>5 Menit</option>
+                        <option value={10}>10 Menit</option>
+                        <option value={60}>60 Menit</option>
+                        <option value={360}>6 Jam</option>
+                        <option value={720}>12 Jam</option>
+                        <option value={1440}>24 Jam</option>
+                        <option value={10080}>7 Hari</option>
+                        <option value={43200}>30 Hari</option>
+                      </select>
+                      <ChevronDown size={18} style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-secondary)' }} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="form-label">Password (Opsional)</label>
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      placeholder="Kosongkan jika tidak butuh password"
+                      value={shareModalConfig.password}
+                      onChange={e => setShareModalConfig(prev => ({ ...prev, password: e.target.value }))}
+                      style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-light)', background: 'var(--bg-base)', color: 'var(--text-primary)' }}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="modal-footer" style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+              {shareModalConfig.hash ? (
+                <>
+                  <button 
+                    type="button" 
+                    onClick={revokeShareLink} 
+                    style={{ background: 'var(--danger-bg)', border: 'none', padding: '0.5rem 1.5rem', color: 'var(--danger)', fontWeight: 500, cursor: 'pointer', borderRadius: '8px' }} 
+                    disabled={shareModalConfig.loading}
+                  >
+                    {shareModalConfig.loading ? <Loader2 size={16} className="spin" /> : 'Hentikan'}
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => setShareModalConfig(prev => ({ ...prev, isOpen: false }))} 
+                    style={{ background: 'var(--brand-bg)', border: 'none', padding: '0.5rem 1.5rem', color: 'var(--brand-primary)', fontWeight: 500, cursor: 'pointer', borderRadius: '8px' }} 
+                    disabled={shareModalConfig.loading}
+                  >
+                    Tutup
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button 
+                    type="button" 
+                    onClick={() => setShareModalConfig(prev => ({ ...prev, isOpen: false }))} 
+                    style={{ background: 'none', border: 'none', padding: '0.5rem 1rem', color: 'var(--text-secondary)', fontWeight: 500, cursor: 'pointer', borderRadius: '8px' }} 
+                    disabled={shareModalConfig.loading}
+                  >
+                    Batal
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={executeShareLink} 
+                    style={{ background: 'var(--brand-primary)', border: 'none', padding: '0.5rem 1.5rem', color: 'white', fontWeight: 500, cursor: 'pointer', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.5rem' }} 
+                    disabled={shareModalConfig.loading}
+                  >
+                    {shareModalConfig.loading ? <Loader2 size={16} className="spin" /> : <Share2 size={16} />}
+                    Bagikan
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Custom Dialog Modal */}
       {dialogConfig.isOpen && (
         <div className="modal-overlay" style={{ zIndex: 2000 }} onClick={() => dialogConfig.type === 'alert' && dialogConfig.onConfirm(false)}>
@@ -2138,8 +2596,20 @@ export default function Home() {
               />
             )}
 
+            {dialogConfig.type === 'share' && (
+              <div style={{ marginBottom: '1.5rem' }}>
+                <input
+                  type="text"
+                  readOnly
+                  value={dialogConfig.defaultValue}
+                  onClick={e => e.target.select()}
+                  style={{ padding: '0.75rem', fontSize: '0.95rem', width: '100%', background: 'var(--bg-base)', border: '1px solid var(--border-light)', color: 'var(--text-primary)', borderRadius: '8px', outline: 'none' }}
+                />
+              </div>
+            )}
+
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-              {dialogConfig.type !== 'alert' && (
+              {dialogConfig.type !== 'alert' && dialogConfig.type !== 'share' && dialogConfig.type !== 'success' && (
                 <button type="button" onClick={() => dialogConfig.onConfirm(dialogConfig.type === 'prompt' ? null : false)} style={{ background: 'none', border: 'none', padding: '0.5rem 1rem', color: 'var(--text-secondary)', fontWeight: 500, cursor: 'pointer', borderRadius: '8px' }} onMouseOver={e => e.currentTarget.style.background = 'var(--bg-surface-hover)'} onMouseOut={e => e.currentTarget.style.background = 'none'}>
                   Batal
                 </button>
@@ -2159,6 +2629,36 @@ export default function Home() {
             <X size={24} />
           </button>
 
+          {(() => {
+            const media = filteredFiles.filter(f => {
+              const ext = f.filename.includes('.') ? f.filename.split('.').pop().toLowerCase() : '';
+              return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mkv', 'avi', 'mov', 'webm'].includes(ext);
+            });
+            if (media.length > 1) {
+              const handleNav = (dir, e) => {
+                e.stopPropagation();
+                const currentIndex = media.findIndex(f => f.id === previewFile.id);
+                if (currentIndex === -1) return;
+                let newIndex = currentIndex + dir;
+                if (newIndex < 0) newIndex = media.length - 1;
+                if (newIndex >= media.length) newIndex = 0;
+                setSlideDirection(dir === 1 ? 'right' : 'left');
+                setPreviewFile(media[newIndex]);
+              };
+              return (
+                <>
+                  <button onClick={(e) => handleNav(-1, e)} style={{ position: 'absolute', left: '1.5rem', top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', padding: '0.75rem', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1001 }} onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'} onMouseOut={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}>
+                    <ChevronLeft size={32} />
+                  </button>
+                  <button onClick={(e) => handleNav(1, e)} style={{ position: 'absolute', right: '1.5rem', top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', padding: '0.75rem', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1001 }} onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'} onMouseOut={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}>
+                    <ChevronRight size={32} />
+                  </button>
+                </>
+              );
+            }
+            return null;
+          })()}
+
           <div className="modal-content" onClick={e => e.stopPropagation()} style={{ background: 'transparent', border: 'none', boxShadow: 'none', maxWidth: '800px', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
             {(() => {
               const ext = previewFile.filename.includes('.') ? previewFile.filename.split('.').pop().toLowerCase() : '';
@@ -2167,7 +2667,7 @@ export default function Home() {
 
               if (isImage || isVideo) {
                 return (
-                  <>
+                  <div key={previewFile.id} className={slideDirection ? `animate-slide-${slideDirection}` : ''} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem', width: '100%' }}>
                     {isImage ? (
                       <img src={`/api/download/${previewFile.id}`} alt={previewFile.filename} style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain', borderRadius: '12px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }} loading="lazy" />
                     ) : (
@@ -2207,7 +2707,7 @@ export default function Home() {
                         </a>
                       )}
                     </div>
-                  </>
+                  </div>
                 );
               }
 
@@ -2525,6 +3025,10 @@ export default function Home() {
                 <button className="dropdown-item" onClick={(e) => { e.stopPropagation(); setContextMenu(prev => ({ ...prev, isOpen: false })); handleAction(e, 'folder', contextMenu.item.id, contextMenu.item.isStarred ? 'unstar' : 'star'); }}>
                   <Star size={16} fill={contextMenu.item.isStarred ? "#eab308" : "none"} color={contextMenu.item.isStarred ? "#eab308" : "currentColor"} /> {contextMenu.item.isStarred ? 'Hapus Bintang' : 'Beri Bintang'}
                 </button>
+                <div className="dropdown-item" onClick={() => { setContextMenu(prev => ({...prev, isOpen: false})); openShareModal(contextMenu.item); }}>
+                  <Share2 size={16} />
+                  <span>{contextMenu.item.shareHash ? 'Lihat Link Publik' : 'Bagikan Link Publik'}</span>
+                </div>
                 <button className="dropdown-item" onClick={(e) => { e.stopPropagation(); setContextMenu(prev => ({ ...prev, isOpen: false })); handleRename(e, 'folder', contextMenu.item.id, contextMenu.item.name); }}>
                   <Edit2 size={16} /> {t.rename}
                 </button>
@@ -2556,6 +3060,10 @@ export default function Home() {
                 <button className="dropdown-item" onClick={(e) => { e.stopPropagation(); setContextMenu(prev => ({ ...prev, isOpen: false })); setDestinationModalAction('copy'); setDestinationModalTargets([{ ...contextMenu.item, _type: 'file' }]); openDestinationModal(); }}>
                   <Copy size={16} /> Salin
                 </button>
+                <div className="dropdown-item" onClick={() => { setContextMenu(prev => ({...prev, isOpen: false})); openShareModal(contextMenu.item); }}>
+                  <Share2 size={16} />
+                  <span>{contextMenu.item.shareHash ? 'Lihat Link Publik' : 'Bagikan Link Publik'}</span>
+                </div>
                 <button className="dropdown-item" onClick={(e) => { e.stopPropagation(); setContextMenu(prev => ({ ...prev, isOpen: false })); setDestinationModalAction('move'); setDestinationModalTargets([{ ...contextMenu.item, _type: 'file' }]); openDestinationModal(); }}>
                   <Folder size={16} /> Pindahkan
                 </button>

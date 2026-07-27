@@ -9,6 +9,9 @@ export async function GET(req) {
     const userId = await getUserId();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+    // Cleanup expired links before fetching
+    await runQuery('DELETE FROM shared_links WHERE expiresAt IS NOT NULL AND expiresAt < ?', [new Date().toISOString()]);
+
     const { searchParams } = new URL(req.url);
     const parentId = searchParams.get('parentId');
 
@@ -19,23 +22,32 @@ export async function GET(req) {
     let params = [userId];
 
     if (filter === 'trash') {
-      sql = 'SELECT * FROM folders WHERE ownerId = ? AND isDeleted = 1 ORDER BY deletedAt DESC';
+      sql = 'SELECT folders.*, (SELECT id FROM shared_links sl WHERE sl.folderId = folders.id LIMIT 1) as shareHash FROM folders WHERE ownerId = ? AND isDeleted = 1 ORDER BY deletedAt DESC';
     } else if (filter === 'starred') {
-      sql = 'SELECT * FROM folders WHERE ownerId = ? AND isDeleted = 0 AND isStarred = 1 ORDER BY createdAt DESC';
+      sql = 'SELECT folders.*, (SELECT id FROM shared_links sl WHERE sl.folderId = folders.id LIMIT 1) as shareHash FROM folders WHERE ownerId = ? AND isDeleted = 0 AND isStarred = 1 ORDER BY createdAt DESC';
     } else if (filter === 'recent' || filter === 'media') {
       // Folders are not shown in recent or media views
       return NextResponse.json({ success: true, folders: [] });
     } else if (search) {
-      sql = 'SELECT * FROM folders WHERE ownerId = ? AND isDeleted = 0 AND name LIKE ? ORDER BY createdAt DESC';
+      sql = 'SELECT folders.*, (SELECT id FROM shared_links sl WHERE sl.folderId = folders.id LIMIT 1) as shareHash FROM folders WHERE ownerId = ? AND isDeleted = 0 AND name LIKE ? ORDER BY createdAt DESC';
       params.push(`%${search}%`);
     } else if (searchParams.get('fetchAll') === 'true') {
-      sql = 'SELECT * FROM folders WHERE ownerId = ? AND isDeleted = 0 ORDER BY createdAt DESC';
+      sql = 'SELECT folders.*, (SELECT id FROM shared_links sl WHERE sl.folderId = folders.id LIMIT 1) as shareHash FROM folders WHERE ownerId = ? AND isDeleted = 0 ORDER BY createdAt DESC';
     } else if (parentId) {
-      sql = 'SELECT * FROM folders WHERE ownerId = ? AND isDeleted = 0 AND parentId = ? ORDER BY createdAt DESC';
+      sql = 'SELECT folders.*, (SELECT id FROM shared_links sl WHERE sl.folderId = folders.id LIMIT 1) as shareHash FROM folders WHERE ownerId = ? AND isDeleted = 0 AND parentId = ? ORDER BY createdAt DESC';
       params.push(parentId);
     } else {
-      sql = 'SELECT * FROM folders WHERE ownerId = ? AND isDeleted = 0 AND parentId IS NULL ORDER BY createdAt DESC';
+      sql = 'SELECT folders.*, (SELECT id FROM shared_links sl WHERE sl.folderId = folders.id LIMIT 1) as shareHash FROM folders WHERE ownerId = ? AND isDeleted = 0 AND parentId IS NULL ORDER BY createdAt DESC';
     }
+
+    sql = sql.replace(' FROM folders', ', EXISTS(SELECT 1 FROM shared_tree st WHERE st.id = folders.parentId) as isImplicitlyShared FROM folders');
+    const cte = `WITH RECURSIVE shared_tree AS (
+      SELECT folderId as id FROM shared_links WHERE folderId IS NOT NULL
+      UNION ALL
+      SELECT f.id FROM folders f
+      INNER JOIN shared_tree st ON f.parentId = st.id
+    ) `;
+    sql = cte + sql;
 
     const folders = await allQuery(sql, params);
 

@@ -55,6 +55,27 @@ export async function getDb() {
     )
   `);
 
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS shared_links (
+      id TEXT PRIMARY KEY,
+      fileId TEXT NOT NULL,
+      ownerId TEXT NOT NULL,
+      passwordHash TEXT,
+      expiresAt DATETIME,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS file_versions (
+      id TEXT PRIMARY KEY,
+      fileId TEXT NOT NULL,
+      telegramFileId TEXT NOT NULL,
+      size INTEGER,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // Run migrations silently (ignore errors if columns already exist)
   const migrations = [
     "ALTER TABLE files ADD COLUMN isStarred INTEGER DEFAULT 0",
@@ -62,7 +83,8 @@ export async function getDb() {
     "ALTER TABLE files ADD COLUMN deletedAt DATETIME",
     "ALTER TABLE folders ADD COLUMN isStarred INTEGER DEFAULT 0",
     "ALTER TABLE folders ADD COLUMN isDeleted INTEGER DEFAULT 0",
-    "ALTER TABLE folders ADD COLUMN deletedAt DATETIME"
+    "ALTER TABLE folders ADD COLUMN deletedAt DATETIME",
+    "ALTER TABLE shared_links ADD COLUMN folderId TEXT"
   ];
   
   for (const sql of migrations) {

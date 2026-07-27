@@ -103,3 +103,29 @@ export async function saveSession(sessionId, userId, sessionStr) {
   }
 }
 
+export async function getClientByUserId(userId) {
+  const sessionRow = await getQuery("SELECT id, sessionString FROM sessions WHERE userId = ? LIMIT 1", [userId]);
+  if (!sessionRow) {
+    throw new Error('User session not found');
+  }
+  
+  const sessionId = sessionRow.id;
+  if (clientPool.has(sessionId)) {
+    const client = clientPool.get(sessionId);
+    if (!client.connected) {
+      try { await client.connect(); } catch (e) {}
+    }
+    return client;
+  }
+  
+  const stringSession = new StringSession(sessionRow.sessionString);
+  const client = new TelegramClient(stringSession, apiId, apiHash, {
+    connectionRetries: 5,
+  });
+  
+  await client.connect();
+  clientPool.set(sessionId, client);
+  client.currentSessionId = sessionId;
+  
+  return client;
+}
