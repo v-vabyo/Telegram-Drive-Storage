@@ -304,11 +304,11 @@ export default function Home() {
     if (savedTheme) {
       setTheme(savedTheme);
     }
-    const savedLang = localStorage.getItem('tg_drive_lang');
+    const savedLang = localStorage.getItem('tg_drive_locale');
     if (savedLang === 'en' || savedLang === 'id') {
       setLang(savedLang);
     } else {
-      localStorage.setItem('tg_drive_lang', 'en');
+      localStorage.setItem('tg_drive_locale', 'en');
     }
     const savedViewMode = localStorage.getItem('tg_drive_viewMode');
     if (savedViewMode) {
@@ -1169,7 +1169,7 @@ const CountdownTimer = ({ expiresAt }) => {
 
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
-      window.location.href = '/login';
+      window.location.href = '/';
     } catch (err) {
       console.error("Logout error", err);
     }
@@ -1580,8 +1580,8 @@ const CountdownTimer = ({ expiresAt }) => {
     return (
       <div className="auth-container">
         <div style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', zIndex: 10, display: 'flex', gap: '0.5rem', background: 'rgba(255,255,255,0.8)', padding: '0.25rem', borderRadius: '12px', backdropFilter: 'blur(10px)', border: '1px solid var(--border-light)' }}>
-          <button onClick={() => { setLang('id'); localStorage.setItem('tg_drive_lang', 'id'); }} style={{ border: 'none', background: lang === 'id' ? 'var(--brand-primary)' : 'transparent', color: lang === 'id' ? '#fff' : 'var(--text-secondary)', padding: '0.4rem 0.75rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s', fontSize: '0.85rem' }}>ID</button>
-          <button onClick={() => { setLang('en'); localStorage.setItem('tg_drive_lang', 'en'); }} style={{ border: 'none', background: lang === 'en' ? 'var(--brand-primary)' : 'transparent', color: lang === 'en' ? '#fff' : 'var(--text-secondary)', padding: '0.4rem 0.75rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s', fontSize: '0.85rem' }}>EN</button>
+          <button onClick={() => { setLang('id'); localStorage.setItem('tg_drive_locale', 'id'); }} style={{ border: 'none', background: lang === 'id' ? 'var(--brand-primary)' : 'transparent', color: lang === 'id' ? '#fff' : 'var(--text-secondary)', padding: '0.4rem 0.75rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s', fontSize: '0.85rem' }}>ID</button>
+          <button onClick={() => { setLang('en'); localStorage.setItem('tg_drive_locale', 'en'); }} style={{ border: 'none', background: lang === 'en' ? 'var(--brand-primary)' : 'transparent', color: lang === 'en' ? '#fff' : 'var(--text-secondary)', padding: '0.4rem 0.75rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s', fontSize: '0.85rem' }}>EN</button>
         </div>
         <div className="auth-panel">
           <div className="auth-header">
@@ -1953,7 +1953,7 @@ const CountdownTimer = ({ expiresAt }) => {
               onClick={() => {
                 const newLang = lang === 'id' ? 'en' : 'id';
                 setLang(newLang);
-                localStorage.setItem('tg_drive_lang', newLang);
+                localStorage.setItem('tg_drive_locale', newLang);
               }}
               onMouseOver={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
               onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
